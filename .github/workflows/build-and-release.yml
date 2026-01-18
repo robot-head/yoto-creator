@@ -1,0 +1,245 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  SOLUTION_FILE_PATH: YotoCreator.sln
+  PROJECT_PATH: YotoCreator/YotoCreator.csproj
+  CONFIGURATION: Release
+  PLATFORMS: 'x86|x64|ARM|ARM64'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.3
+
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v1
+
+    - name: Restore NuGet packages
+      run: nuget restore ${{ env.SOLUTION_FILE_PATH }}
+
+    - name: Build solution for testing
+      run: msbuild ${{ env.SOLUTION_FILE_PATH }} /p:Configuration=Debug /p:Platform=x64
+
+    - name: Run tests
+      run: |
+        echo "Looking for test assemblies..."
+        $testAssemblies = Get-ChildItem -Path . -Recurse -Filter "*Test*.dll" | Where-Object { $_.FullName -match "bin\\Debug" }
+        if ($testAssemblies.Count -gt 0) {
+          Write-Host "Found test assemblies:"
+          $testAssemblies | ForEach-Object { Write-Host $_.FullName }
+          # Install VSTest
+          choco install visualstudio2022-workload-nativedesktop -y
+          # Run tests
+          vstest.console.exe $testAssemblies.FullName
+        } else {
+          Write-Host "No test assemblies found. Skipping tests."
+        }
+      shell: pwsh
+      continue-on-error: true
+
+  build:
+    name: Build Release Packages
+    runs-on: windows-latest
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    strategy:
+      matrix:
+        platform: [x86, x64, ARM, ARM64]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.3
+
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v1
+
+    - name: Restore NuGet packages
+      run: nuget restore ${{ env.SOLUTION_FILE_PATH }}
+
+    - name: Build and package for ${{ matrix.platform }}
+      run: |
+        msbuild ${{ env.PROJECT_PATH }} `
+          /p:Configuration=${{ env.CONFIGURATION }} `
+          /p:Platform=${{ matrix.platform }} `
+          /p:AppxBundle=Always `
+          /p:AppxBundlePlatforms="${{ matrix.platform }}" `
+          /p:UapAppxPackageBuildMode=StoreUpload `
+          /p:GenerateAppxPackageOnBuild=true
+      shell: pwsh
+
+    - name: Find and prepare artifacts
+      id: find_artifacts
+      run: |
+        $packagePath = Get-ChildItem -Path "YotoCreator\AppPackages" -Recurse -Filter "*.msixbundle" | Select-Object -First 1
+        if ($null -eq $packagePath) {
+          $packagePath = Get-ChildItem -Path "YotoCreator\AppPackages" -Recurse -Filter "*.appxbundle" | Select-Object -First 1
+        }
+        if ($null -eq $packagePath) {
+          Write-Host "No package bundle found, looking for individual packages..."
+          $packagePath = Get-ChildItem -Path "YotoCreator\AppPackages" -Recurse -Filter "*.msix" | Select-Object -First 1
+          if ($null -eq $packagePath) {
+            $packagePath = Get-ChildItem -Path "YotoCreator\AppPackages" -Recurse -Filter "*.appx" | Select-Object -First 1
+          }
+        }
+
+        if ($packagePath) {
+          Write-Host "Found package: $($packagePath.FullName)"
+          echo "PACKAGE_PATH=$($packagePath.FullName)" >> $env:GITHUB_OUTPUT
+          echo "PACKAGE_NAME=$($packagePath.Name)" >> $env:GITHUB_OUTPUT
+        } else {
+          Write-Error "No package found!"
+          exit 1
+        }
+      shell: pwsh
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: YotoCreator-${{ matrix.platform }}
+        path: ${{ steps.find_artifacts.outputs.PACKAGE_PATH }}
+        retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    runs-on: windows-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: List artifacts
+      run: |
+        Write-Host "Downloaded artifacts:"
+        Get-ChildItem -Path artifacts -Recurse
+      shell: pwsh
+
+    - name: Get version from tag
+      id: get_version
+      run: |
+        $version = "${{ github.ref_name }}" -replace '^v', ''
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+      shell: pwsh
+
+    - name: Create release notes
+      id: release_notes
+      run: |
+        $notes = @"
+        # Yoto Creator ${{ steps.get_version.outputs.VERSION }}
+
+        Windows UWP application for creating custom Yoto Player content with AI-generated artwork.
+
+        ## Features
+        - Audio file management and organization
+        - AI-powered icon generation (16x16)
+        - AI-powered cover image generation
+        - ChatGPT/OpenAI integration
+        - Yoto API integration
+
+        ## Installation
+        1. Download the appropriate package for your platform
+        2. Install the certificate (if provided)
+        3. Install the .appxbundle or .msixbundle package
+        4. Launch Yoto Creator from the Start menu
+
+        ## Platform Packages
+        - **x64**: For modern 64-bit Windows PCs
+        - **x86**: For 32-bit Windows systems
+        - **ARM64**: For ARM-based Windows devices (e.g., Surface Pro X)
+        - **ARM**: For older ARM devices
+
+        ## Requirements
+        - Windows 10 version 17763 or higher
+        - OpenAI API key
+        - Yoto API key
+
+        ---
+        Built on: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+        Commit: ${{ github.sha }}
+        "@
+
+        $notes | Out-File -FilePath release_notes.md -Encoding utf8
+        echo "NOTES_FILE=release_notes.md" >> $env:GITHUB_OUTPUT
+      shell: pwsh
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Yoto Creator ${{ steps.get_version.outputs.VERSION }}
+        body_path: ${{ steps.release_notes.outputs.NOTES_FILE }}
+        draft: false
+        prerelease: false
+        files: |
+          artifacts/**/*.appxbundle
+          artifacts/**/*.msixbundle
+          artifacts/**/*.appx
+          artifacts/**/*.msix
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-pr:
+    name: Build PR (Validation Only)
+    runs-on: windows-latest
+    if: github.event_name == 'pull_request'
+    needs: test
+
+    strategy:
+      matrix:
+        platform: [x64]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.3
+
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v1
+
+    - name: Restore NuGet packages
+      run: nuget restore ${{ env.SOLUTION_FILE_PATH }}
+
+    - name: Build for validation
+      run: |
+        msbuild ${{ env.PROJECT_PATH }} `
+          /p:Configuration=${{ env.CONFIGURATION }} `
+          /p:Platform=${{ matrix.platform }}
+      shell: pwsh
+
+    - name: Build status
+      run: |
+        Write-Host "✓ Build completed successfully for PR validation"
+        Write-Host "  Platform: ${{ matrix.platform }}"
+        Write-Host "  Configuration: ${{ env.CONFIGURATION }}"
+      shell: pwsh

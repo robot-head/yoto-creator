@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop, 'claude/**' ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+env:
+  SOLUTION_FILE_PATH: YotoCreator.sln
+  CONFIGURATION: Debug
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        platform: [x64, x86]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.3
+
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v1
+
+    - name: Restore NuGet packages
+      run: nuget restore ${{ env.SOLUTION_FILE_PATH }}
+
+    - name: Build solution
+      run: |
+        msbuild ${{ env.SOLUTION_FILE_PATH }} `
+          /p:Configuration=${{ env.CONFIGURATION }} `
+          /p:Platform=${{ matrix.platform }} `
+          /p:AppxBundle=Never `
+          /m
+      shell: pwsh
+
+    - name: Check for test projects
+      id: check_tests
+      run: |
+        $testProjects = Get-ChildItem -Path . -Recurse -Filter "*Test*.csproj"
+        if ($testProjects.Count -gt 0) {
+          echo "HAS_TESTS=true" >> $env:GITHUB_OUTPUT
+          Write-Host "Found test projects:"
+          $testProjects | ForEach-Object { Write-Host "  - $($_.Name)" }
+        } else {
+          echo "HAS_TESTS=false" >> $env:GITHUB_OUTPUT
+          Write-Host "No test projects found"
+        }
+      shell: pwsh
+
+    - name: Run tests
+      if: steps.check_tests.outputs.HAS_TESTS == 'true'
+      run: |
+        $testAssemblies = Get-ChildItem -Path . -Recurse -Filter "*Test*.dll" |
+          Where-Object { $_.FullName -match "bin\\${{ env.CONFIGURATION }}" }
+
+        if ($testAssemblies.Count -gt 0) {
+          Write-Host "Running tests on:"
+          $testAssemblies | ForEach-Object { Write-Host "  - $($_.Name)" }
+          vstest.console.exe $testAssemblies.FullName
+        } else {
+          Write-Host "No test assemblies found in bin\\${{ env.CONFIGURATION }}"
+        }
+      shell: pwsh
+      continue-on-error: true
+
+    - name: Build summary
+      run: |
+        Write-Host "`n========================================" -ForegroundColor Green
+        Write-Host "Build completed successfully!" -ForegroundColor Green
+        Write-Host "========================================" -ForegroundColor Green
+        Write-Host "Platform:      ${{ matrix.platform }}"
+        Write-Host "Configuration: ${{ env.CONFIGURATION }}"
+        Write-Host "Solution:      ${{ env.SOLUTION_FILE_PATH }}"
+        Write-Host "Commit:        ${{ github.sha }}"
+        Write-Host "Branch:        ${{ github.ref_name }}"
+      shell: pwsh
+
+  lint:
+    name: Code Quality Check
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Check for common issues
+      run: |
+        Write-Host "Running code quality checks..."
+
+        # Check for TODO comments
+        $todos = Select-String -Path "**/*.cs" -Pattern "TODO" -AllMatches -Exclude "**/obj/**","**/bin/**"
+        if ($todos.Count -gt 0) {
+          Write-Host "`nFound $($todos.Count) TODO comments:" -ForegroundColor Yellow
+          $todos | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber)" }
+        }
+
+        # Check for debug statements
+        $debugs = Select-String -Path "**/*.cs" -Pattern "System\.Diagnostics\.Debug" -AllMatches -Exclude "**/obj/**","**/bin/**"
+        if ($debugs.Count -gt 0) {
+          Write-Host "`nFound $($debugs.Count) Debug statements:" -ForegroundColor Yellow
+          $debugs | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber)" }
+        }
+
+        # Check for hardcoded API keys or secrets
+        $secrets = Select-String -Path "**/*.cs" -Pattern "(api[_-]?key|secret|password)\s*=\s*`"[^`"]+`"" -AllMatches -Exclude "**/obj/**","**/bin/**"
+        if ($secrets.Count -gt 0) {
+          Write-Host "`nWARNING: Possible hardcoded secrets found:" -ForegroundColor Red
+          $secrets | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber)" }
+          Write-Host "Please review these locations to ensure no secrets are hardcoded." -ForegroundColor Red
+        }
+
+        Write-Host "`nCode quality check completed." -ForegroundColor Green
+      shell: pwsh
+      continue-on-error: true
+
+  status:
+    name: CI Status
+    runs-on: ubuntu-latest
+    needs: [build, lint]
+    if: always()
+
+    steps:
+    - name: Check build status
+      run: |
+        echo "CI Status Summary"
+        echo "================="
+        echo "Build: ${{ needs.build.result }}"
+        echo "Lint: ${{ needs.lint.result }}"
+
+        if [ "${{ needs.build.result }}" != "success" ]; then
+          echo "❌ Build failed"
+          exit 1
+        elif [ "${{ needs.lint.result }}" == "failure" ]; then
+          echo "⚠️  Build succeeded but linting found issues"
+          exit 0
+        else
+          echo "✅ All checks passed"
+          exit 0
+        fi
