@@ -1,0 +1,148 @@
+<Page
+    x:Class="YotoCreator.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:YotoCreator"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title Bar -->
+        <StackPanel Grid.Row="0" Background="{ThemeResource SystemControlAccentAcrylicElementAccentMediumHighBrush}" Padding="20">
+            <TextBlock Text="Yoto Creator" FontSize="28" FontWeight="Bold" Foreground="White"/>
+            <TextBlock Text="Create custom content for your Yoto Player" FontSize="14" Foreground="White" Opacity="0.8"/>
+        </StackPanel>
+
+        <!-- Main Content -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Padding="20" Spacing="20">
+
+                <!-- Authentication Section -->
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Authentication" FontSize="20" FontWeight="SemiBold"/>
+                    <Border BorderBrush="{ThemeResource SystemControlForegroundBaseMediumLowBrush}" BorderThickness="1" CornerRadius="4" Padding="15">
+                        <StackPanel Spacing="10">
+
+                            <!-- ChatGPT Authentication -->
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="ChatGPT API" FontWeight="SemiBold"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <PasswordBox x:Name="ChatGptApiKeyBox" PlaceholderText="Enter ChatGPT API Key" Width="300"/>
+                                    <Button x:Name="ChatGptAuthButton" Content="Connect" Click="ChatGptAuthButton_Click"/>
+                                    <TextBlock x:Name="ChatGptStatusText" VerticalAlignment="Center" Foreground="Gray"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Yoto API Authentication -->
+                            <StackPanel Spacing="5" Margin="0,10,0,0">
+                                <TextBlock Text="Yoto API" FontWeight="SemiBold"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBox x:Name="YotoApiKeyBox" PlaceholderText="Enter Yoto API Key" Width="300"/>
+                                    <Button x:Name="YotoAuthButton" Content="Connect" Click="YotoAuthButton_Click"/>
+                                    <TextBlock x:Name="YotoStatusText" VerticalAlignment="Center" Foreground="Gray"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Audio Files Section -->
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Audio Files" FontSize="20" FontWeight="SemiBold"/>
+                    <Border BorderBrush="{ThemeResource SystemControlForegroundBaseMediumLowBrush}" BorderThickness="1" CornerRadius="4" Padding="15">
+                        <StackPanel Spacing="10">
+                            <Button x:Name="PickAudioFilesButton" Content="Pick Audio Files" Click="PickAudioFilesButton_Click"/>
+                            <ListView x:Name="AudioFilesList" Height="200" SelectionMode="Multiple">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <TextBlock Text="{Binding FileName}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="-" Foreground="Gray"/>
+                                            <TextBlock Text="{Binding Duration}" Foreground="Gray"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Button x:Name="RemoveSelectedButton" Content="Remove Selected" Click="RemoveSelectedButton_Click"/>
+                                <Button x:Name="ClearAllButton" Content="Clear All" Click="ClearAllButton_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- AI Content Generation Section -->
+                <StackPanel Spacing="10">
+                    <TextBlock Text="AI Content Generation" FontSize="20" FontWeight="SemiBold"/>
+                    <Border BorderBrush="{ThemeResource SystemControlForegroundBaseMediumLowBrush}" BorderThickness="1" CornerRadius="4" Padding="15">
+                        <StackPanel Spacing="15">
+
+                            <!-- Icon Generation -->
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="16x16 Icon for Yoto Player" FontWeight="SemiBold"/>
+                                <TextBox x:Name="IconPromptBox" PlaceholderText="Describe the icon you want (e.g., 'A colorful book icon')"
+                                         TextWrapping="Wrap" Height="60"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button x:Name="GenerateIconButton" Content="Generate Icon" Click="GenerateIconButton_Click"/>
+                                    <ProgressRing x:Name="IconProgressRing" IsActive="False" Width="24" Height="24"/>
+                                </StackPanel>
+                                <Border x:Name="IconPreviewBorder" Width="64" Height="64" BorderBrush="Gray" BorderThickness="1"
+                                        HorizontalAlignment="Left" Margin="0,10,0,0" Visibility="Collapsed">
+                                    <Image x:Name="IconPreviewImage" Stretch="UniformToFill"/>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Cover Image Generation -->
+                            <StackPanel Spacing="5" Margin="0,10,0,0">
+                                <TextBlock Text="Cover Image" FontWeight="SemiBold"/>
+                                <TextBox x:Name="CoverPromptBox" PlaceholderText="Describe the cover image (e.g., 'A whimsical forest scene with animals')"
+                                         TextWrapping="Wrap" Height="60"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button x:Name="GenerateCoverButton" Content="Generate Cover" Click="GenerateCoverButton_Click"/>
+                                    <ProgressRing x:Name="CoverProgressRing" IsActive="False" Width="24" Height="24"/>
+                                </StackPanel>
+                                <Border x:Name="CoverPreviewBorder" Width="200" Height="200" BorderBrush="Gray" BorderThickness="1"
+                                        HorizontalAlignment="Left" Margin="0,10,0,0" Visibility="Collapsed">
+                                    <Image x:Name="CoverPreviewImage" Stretch="UniformToFill"/>
+                                </Border>
+                            </StackPanel>
+
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Yoto Content Management Section -->
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Yoto Content Management" FontSize="20" FontWeight="SemiBold"/>
+                    <Border BorderBrush="{ThemeResource SystemControlForegroundBaseMediumLowBrush}" BorderThickness="1" CornerRadius="4" Padding="15">
+                        <StackPanel Spacing="10">
+
+                            <TextBox x:Name="ContentTitleBox" PlaceholderText="Content Title" Header="Title"/>
+                            <TextBox x:Name="ContentDescriptionBox" PlaceholderText="Content Description"
+                                     Header="Description" TextWrapping="Wrap" Height="80"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,10,0,0">
+                                <Button x:Name="CreateContentButton" Content="Create New Content" Click="CreateContentButton_Click"
+                                        Style="{StaticResource AccentButtonStyle}"/>
+                                <Button x:Name="UpdateContentButton" Content="Update Existing" Click="UpdateContentButton_Click"/>
+                                <ProgressRing x:Name="ContentProgressRing" IsActive="False" Width="24" Height="24"/>
+                            </StackPanel>
+
+                            <TextBlock x:Name="ContentStatusText" Foreground="Green" Visibility="Collapsed" Margin="0,10,0,0"/>
+
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>
