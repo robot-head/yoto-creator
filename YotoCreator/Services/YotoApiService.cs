@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -95,10 +96,34 @@ namespace YotoCreator.Services
                     await UploadCoverImageAsync(contentId, content.CoverImage);
                 }
 
-                // Step 4: Upload audio files
-                foreach (var audioFile in content.AudioFiles)
+                // Step 4: Upload chapters and their audio files
+                if (content.Chapters != null && content.Chapters.Count > 0)
                 {
-                    await UploadAudioFileAsync(contentId, audioFile);
+                    // Process chapters in order
+                    foreach (var chapter in content.Chapters.OrderBy(c => c.Order))
+                    {
+                        // Upload chapter icon if available
+                        if (chapter.Icon != null && chapter.Icon.Length > 0)
+                        {
+                            // Note: This assumes the Yoto API supports chapter icons
+                            // If not, this could be used as a marker/thumbnail in the audio stream
+                            await UploadChapterIconAsync(contentId, chapter.Order, chapter.Icon);
+                        }
+
+                        // Upload audio files for this chapter in order
+                        foreach (var audioFile in chapter.AudioFiles.OrderBy(a => a.Order))
+                        {
+                            await UploadAudioFileAsync(contentId, audioFile);
+                        }
+                    }
+                }
+                else if (content.AudioFiles != null && content.AudioFiles.Count > 0)
+                {
+                    // Fallback to flat audio file structure for backward compatibility
+                    foreach (var audioFile in content.AudioFiles)
+                    {
+                        await UploadAudioFileAsync(contentId, audioFile);
+                    }
                 }
 
                 return contentId;
@@ -165,6 +190,24 @@ namespace YotoCreator.Services
                 content.Add(imageContent, "cover", "cover.png");
 
                 var response = await _httpClient.PostAsync($"{YOTO_API_BASE}/content/{contentId}/cover", content);
+                response.EnsureSuccessStatusCode();
+            }
+        }
+
+        /// <summary>
+        /// Upload chapter icon for content
+        /// </summary>
+        private async Task UploadChapterIconAsync(string contentId, int chapterOrder, byte[] iconData)
+        {
+            using (var content = new MultipartFormDataContent())
+            {
+                var imageContent = new ByteArrayContent(iconData);
+                imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+                content.Add(imageContent, "icon", $"chapter_{chapterOrder}_icon.png");
+
+                // Note: Adjust this endpoint based on actual Yoto API chapter support
+                // This is a placeholder endpoint that may need to be updated
+                var response = await _httpClient.PostAsync($"{YOTO_API_BASE}/content/{contentId}/chapters/{chapterOrder}/icon", content);
                 response.EnsureSuccessStatusCode();
             }
         }

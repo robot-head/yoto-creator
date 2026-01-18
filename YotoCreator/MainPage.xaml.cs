@@ -17,6 +17,8 @@ namespace YotoCreator
         private readonly ChatGptService _chatGptService;
         private readonly YotoApiService _yotoApiService;
         private ObservableCollection<AudioFile> _audioFiles;
+        private ObservableCollection<Chapter> _chapters;
+        private Chapter _selectedChapter;
         private byte[] _generatedIcon;
         private byte[] _generatedCover;
 
@@ -28,8 +30,9 @@ namespace YotoCreator
             _chatGptService = new ChatGptService();
             _yotoApiService = new YotoApiService();
             _audioFiles = new ObservableCollection<AudioFile>();
+            _chapters = new ObservableCollection<Chapter>();
 
-            AudioFilesList.ItemsSource = _audioFiles;
+            ChaptersList.ItemsSource = _chapters;
         }
 
         #region Authentication
@@ -98,17 +101,139 @@ namespace YotoCreator
 
         #endregion
 
-        #region Audio Files
+        #region Chapter Management
 
-        private async void PickAudioFilesButton_Click(object sender, RoutedEventArgs e)
+        private void CreateChapterButton_Click(object sender, RoutedEventArgs e)
         {
+            var title = NewChapterTitleBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                _ = ShowErrorDialog("Title Required", "Please enter a title for the chapter");
+                return;
+            }
+
+            var chapter = new Chapter
+            {
+                Title = title,
+                Description = NewChapterDescriptionBox.Text?.Trim(),
+                Order = _chapters.Count
+            };
+
+            _chapters.Add(chapter);
+
+            NewChapterTitleBox.Text = string.Empty;
+            NewChapterDescriptionBox.Text = string.Empty;
+        }
+
+        private void ChaptersList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            _selectedChapter = ChaptersList.SelectedItem as Chapter;
+
+            if (_selectedChapter != null)
+            {
+                SelectedChapterPanel.Visibility = Visibility.Visible;
+                ChapterAudioFilesList.ItemsSource = _selectedChapter.AudioFiles;
+
+                // Reset icon preview
+                ChapterIconPreviewBorder.Visibility = Visibility.Collapsed;
+                ChapterIconPromptBox.Text = string.Empty;
+            }
+            else
+            {
+                SelectedChapterPanel.Visibility = Visibility.Collapsed;
+                ChapterAudioFilesList.ItemsSource = null;
+            }
+        }
+
+        private void DeleteChapterButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is Chapter chapter)
+            {
+                _chapters.Remove(chapter);
+
+                // Update order of remaining chapters
+                for (int i = 0; i < _chapters.Count; i++)
+                {
+                    _chapters[i].Order = i;
+                }
+            }
+        }
+
+        private async void GenerateChapterIconButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedChapter == null)
+            {
+                await ShowErrorDialog("No Chapter Selected", "Please select a chapter first");
+                return;
+            }
+
+            if (!_chatGptService.IsAuthenticated)
+            {
+                await ShowErrorDialog("Authentication Required", "Please authenticate with ChatGPT first");
+                return;
+            }
+
+            var prompt = ChapterIconPromptBox.Text;
+            if (string.IsNullOrWhiteSpace(prompt))
+            {
+                await ShowErrorDialog("Prompt Required", "Please enter a description for the chapter icon");
+                return;
+            }
+
+            try
+            {
+                ChapterIconProgressRing.IsActive = true;
+                GenerateChapterIconButton.IsEnabled = false;
+
+                var iconData = await _chatGptService.GenerateImageAsync(prompt, 16, 16);
+                _selectedChapter.Icon = iconData;
+
+                // Display the generated icon
+                await DisplayImage(ChapterIconPreviewImage, ChapterIconPreviewBorder, iconData);
+
+                // Refresh the chapters list to show the updated icon
+                var selectedIndex = ChaptersList.SelectedIndex;
+                ChaptersList.ItemsSource = null;
+                ChaptersList.ItemsSource = _chapters;
+                ChaptersList.SelectedIndex = selectedIndex;
+            }
+            catch (Exception ex)
+            {
+                await ShowErrorDialog("Generation Error", ex.Message);
+            }
+            finally
+            {
+                ChapterIconProgressRing.IsActive = false;
+                GenerateChapterIconButton.IsEnabled = true;
+            }
+        }
+
+        private async void AddAudioToChapterButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedChapter == null)
+            {
+                await ShowErrorDialog("No Chapter Selected", "Please select a chapter first");
+                return;
+            }
+
             try
             {
                 var files = await _audioFileService.PickAudioFilesAsync();
                 foreach (var file in files)
                 {
-                    _audioFiles.Add(file);
+                    file.Order = _selectedChapter.AudioFiles.Count;
+                    _selectedChapter.AudioFiles.Add(file);
                 }
+
+                // Refresh the audio files list
+                ChapterAudioFilesList.ItemsSource = null;
+                ChapterAudioFilesList.ItemsSource = _selectedChapter.AudioFiles;
+
+                // Refresh chapters list to update the audio file count
+                var selectedIndex = ChaptersList.SelectedIndex;
+                ChaptersList.ItemsSource = null;
+                ChaptersList.ItemsSource = _chapters;
+                ChaptersList.SelectedIndex = selectedIndex;
             }
             catch (Exception ex)
             {
@@ -116,18 +241,32 @@ namespace YotoCreator
             }
         }
 
-        private void RemoveSelectedButton_Click(object sender, RoutedEventArgs e)
+        private void RemoveAudioFromChapterButton_Click(object sender, RoutedEventArgs e)
         {
-            var selectedItems = AudioFilesList.SelectedItems.Cast<AudioFile>().ToList();
+            if (_selectedChapter == null)
+                return;
+
+            var selectedItems = ChapterAudioFilesList.SelectedItems.Cast<AudioFile>().ToList();
             foreach (var item in selectedItems)
             {
-                _audioFiles.Remove(item);
+                _selectedChapter.AudioFiles.Remove(item);
             }
-        }
 
-        private void ClearAllButton_Click(object sender, RoutedEventArgs e)
-        {
-            _audioFiles.Clear();
+            // Update order of remaining files
+            for (int i = 0; i < _selectedChapter.AudioFiles.Count; i++)
+            {
+                _selectedChapter.AudioFiles[i].Order = i;
+            }
+
+            // Refresh the audio files list
+            ChapterAudioFilesList.ItemsSource = null;
+            ChapterAudioFilesList.ItemsSource = _selectedChapter.AudioFiles;
+
+            // Refresh chapters list to update the audio file count
+            var selectedIndex = ChaptersList.SelectedIndex;
+            ChaptersList.ItemsSource = null;
+            ChaptersList.ItemsSource = _chapters;
+            ChaptersList.SelectedIndex = selectedIndex;
         }
 
         #endregion
@@ -224,9 +363,18 @@ namespace YotoCreator
                 return;
             }
 
-            if (_audioFiles.Count == 0)
+            if (_chapters.Count == 0)
             {
-                await ShowErrorDialog("Audio Required", "Please add at least one audio file");
+                await ShowErrorDialog("Chapters Required", "Please add at least one chapter");
+                return;
+            }
+
+            // Validate that all chapters have audio files
+            var chaptersWithoutAudio = _chapters.Where(c => c.AudioFiles.Count == 0).ToList();
+            if (chaptersWithoutAudio.Any())
+            {
+                await ShowErrorDialog("Audio Required",
+                    $"All chapters must have at least one audio file. Missing audio in: {string.Join(", ", chaptersWithoutAudio.Select(c => c.Title))}");
                 return;
             }
 
@@ -240,7 +388,7 @@ namespace YotoCreator
                 {
                     Title = ContentTitleBox.Text,
                     Description = ContentDescriptionBox.Text,
-                    AudioFiles = _audioFiles.ToList(),
+                    Chapters = _chapters.ToList(),
                     Icon = _generatedIcon,
                     CoverImage = _generatedCover
                 };

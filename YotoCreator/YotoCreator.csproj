@@ -122,7 +122,9 @@
     <Compile Include="MainPage.xaml.cs">
       <DependentUpon>MainPage.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Converters\ByteArrayToImageConverter.cs" />
     <Compile Include="Models\AudioFile.cs" />
+    <Compile Include="Models\Chapter.cs" />
     <Compile Include="Models\YotoContent.cs" />
     <Compile Include="Services\AudioFileService.cs" />
     <Compile Include="Services\ChatGptService.cs" />
