@@ -13,7 +13,7 @@ env:
 jobs:
   build:
     name: Build and Test
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     strategy:
       matrix:
@@ -25,32 +25,80 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v1.3
-
     - name: Install UWP workload
       run: |
         $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
         $installPath = & $vsWhere -latest -property installationPath
+        Write-Host "Visual Studio installation path: $installPath"
+
+        # Check what's currently installed
+        Write-Host "`nCurrently installed workloads:"
+        & $vsWhere -latest -property isComplete
+
         $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-        Write-Host "Installing UWP workload..."
-        Start-Process -FilePath $vsInstaller -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", "Microsoft.VisualStudio.Workload.Universal", "--add", "Microsoft.VisualStudio.Component.Windows10SDK.19041", "--quiet", "--norestart", "--wait" -Wait -NoNewWindow
-        Write-Host "UWP workload installation completed"
+        Write-Host "`nInstalling UWP workload and Windows SDK..."
+
+        # Install UWP workload with all required components
+        $process = Start-Process -FilePath $vsInstaller -ArgumentList @(
+          "modify",
+          "--installPath", "$installPath",
+          "--add", "Microsoft.VisualStudio.Workload.Universal",
+          "--add", "Microsoft.VisualStudio.ComponentGroup.UWP.Support",
+          "--add", "Microsoft.VisualStudio.Component.Windows10SDK.19041",
+          "--includeRecommended",
+          "--quiet",
+          "--norestart",
+          "--wait"
+        ) -Wait -PassThru -NoNewWindow
+
+        Write-Host "Installer exit code: $($process.ExitCode)"
+
+        # Verify installation
+        Write-Host "`nVerifying Windows SDK installation..."
+        $sdkPath = "C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0"
+        if (Test-Path $sdkPath) {
+          Write-Host "Windows SDK 10.0.19041.0 found at: $sdkPath"
+        } else {
+          Write-Host "Windows SDK 10.0.19041.0 not found, checking available SDKs..."
+          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.Name }
+        }
+
+        # Check for UWP extension SDKs
+        $extPath = "C:\Program Files (x86)\Windows Kits\10\Extension SDKs"
+        if (Test-Path $extPath) {
+          Write-Host "`nExtension SDKs found:"
+          Get-ChildItem $extPath -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  - $($_.Name)" }
+        }
       shell: pwsh
 
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
     - name: Setup NuGet
-      uses: nuget/setup-nuget@v1
+      uses: nuget/setup-nuget@v2
 
     - name: Restore NuGet packages
       run: nuget restore ${{ env.SOLUTION_FILE_PATH }}
 
     - name: Build solution
       run: |
-        msbuild ${{ env.SOLUTION_FILE_PATH }} `
+        # Find MSBuild from VS installation
+        $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $msbuildPath = & $vsWhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+
+        if (-not $msbuildPath) {
+          Write-Host "MSBuild not found via vswhere, using PATH"
+          $msbuildPath = "msbuild"
+        } else {
+          Write-Host "Using MSBuild: $msbuildPath"
+        }
+
+        & $msbuildPath ${{ env.SOLUTION_FILE_PATH }} `
           /p:Configuration=${{ env.CONFIGURATION }} `
           /p:Platform=${{ matrix.platform }} `
           /p:AppxBundle=Never `
-          /m
+          /m `
+          /verbosity:normal
       shell: pwsh
 
     - name: Check for test projects
