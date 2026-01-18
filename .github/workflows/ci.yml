@@ -28,6 +28,16 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.3
 
+    - name: Install UWP workload
+      run: |
+        $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installPath = & $vsWhere -latest -property installationPath
+        $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+        Write-Host "Installing UWP workload..."
+        Start-Process -FilePath $vsInstaller -ArgumentList "modify", "--installPath", "`"$installPath`"", "--add", "Microsoft.VisualStudio.Workload.Universal", "--add", "Microsoft.VisualStudio.Component.Windows10SDK.19041", "--quiet", "--norestart", "--wait" -Wait -NoNewWindow
+        Write-Host "UWP workload installation completed"
+      shell: pwsh
+
     - name: Setup NuGet
       uses: nuget/setup-nuget@v1
 
