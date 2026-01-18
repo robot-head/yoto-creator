@@ -29,6 +29,11 @@ namespace YotoCreator.Models
         public List<AudioFile> AudioFiles { get; set; }
 
         /// <summary>
+        /// List of chapters in the content
+        /// </summary>
+        public List<Chapter> Chapters { get; set; }
+
+        /// <summary>
         /// 16x16 icon image data
         /// </summary>
         public byte[] Icon { get; set; }
@@ -51,6 +56,7 @@ namespace YotoCreator.Models
         public YotoContent()
         {
             AudioFiles = new List<AudioFile>();
+            Chapters = new List<Chapter>();
         }
     }
 }
