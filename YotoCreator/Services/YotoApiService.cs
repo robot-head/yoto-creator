@@ -15,6 +15,7 @@ namespace YotoCreator.Services
     public class YotoApiService
     {
         private readonly HttpClient _httpClient;
+        private readonly CredentialService _credentialService;
         private string _apiKey;
         private const string YOTO_API_BASE = "https://api.yotoplay.com/v1";
 
@@ -23,12 +24,15 @@ namespace YotoCreator.Services
         public YotoApiService()
         {
             _httpClient = new HttpClient();
+            _credentialService = new CredentialService();
         }
 
         /// <summary>
         /// Authenticate with the Yoto API
         /// </summary>
-        public async Task<bool> AuthenticateAsync(string apiKey)
+        /// <param name="apiKey">Yoto API key</param>
+        /// <param name="saveCredential">If true, saves the API key securely to Windows Credential Manager</param>
+        public async Task<bool> AuthenticateAsync(string apiKey, bool saveCredential = true)
         {
             if (string.IsNullOrWhiteSpace(apiKey))
                 return false;
@@ -44,6 +48,12 @@ namespace YotoCreator.Services
                 var response = await _httpClient.GetAsync($"{YOTO_API_BASE}/user");
                 IsAuthenticated = response.IsSuccessStatusCode;
 
+                // Save the credential if authentication was successful and saveCredential is true
+                if (IsAuthenticated && saveCredential)
+                {
+                    _credentialService.SaveYotoKey(apiKey);
+                }
+
                 return IsAuthenticated;
             }
             catch
@@ -51,6 +61,41 @@ namespace YotoCreator.Services
                 IsAuthenticated = false;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Attempts to authenticate using a previously saved API key from Windows Credential Manager
+        /// </summary>
+        /// <returns>True if authentication was successful, false otherwise</returns>
+        public async Task<bool> AuthenticateFromStoredCredentialAsync()
+        {
+            var storedKey = _credentialService.GetYotoKey();
+            if (string.IsNullOrEmpty(storedKey))
+            {
+                return false;
+            }
+
+            // Use saveCredential: false since the key is already saved
+            return await AuthenticateAsync(storedKey, saveCredential: false);
+        }
+
+        /// <summary>
+        /// Checks if a saved API key exists in Windows Credential Manager
+        /// </summary>
+        public bool HasStoredCredential()
+        {
+            return _credentialService.HasYotoKey();
+        }
+
+        /// <summary>
+        /// Logs out and removes the saved API key from Windows Credential Manager
+        /// </summary>
+        public void Logout()
+        {
+            IsAuthenticated = false;
+            _apiKey = null;
+            _httpClient.DefaultRequestHeaders.Clear();
+            _credentialService.RemoveYotoKey();
         }
 
         /// <summary>

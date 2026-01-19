@@ -13,6 +13,7 @@ namespace YotoCreator.Services
     public class ChatGptService
     {
         private readonly HttpClient _httpClient;
+        private readonly CredentialService _credentialService;
         private string _apiKey;
         private const string OPENAI_API_BASE = "https://api.openai.com/v1";
 
@@ -21,12 +22,15 @@ namespace YotoCreator.Services
         public ChatGptService()
         {
             _httpClient = new HttpClient();
+            _credentialService = new CredentialService();
         }
 
         /// <summary>
         /// Authenticate with the OpenAI API
         /// </summary>
-        public async Task<bool> AuthenticateAsync(string apiKey)
+        /// <param name="apiKey">OpenAI API key</param>
+        /// <param name="saveCredential">If true, saves the API key securely to Windows Credential Manager</param>
+        public async Task<bool> AuthenticateAsync(string apiKey, bool saveCredential = true)
         {
             if (string.IsNullOrWhiteSpace(apiKey))
                 return false;
@@ -41,6 +45,12 @@ namespace YotoCreator.Services
                 var response = await _httpClient.GetAsync($"{OPENAI_API_BASE}/models");
                 IsAuthenticated = response.IsSuccessStatusCode;
 
+                // Save the credential if authentication was successful and saveCredential is true
+                if (IsAuthenticated && saveCredential)
+                {
+                    _credentialService.SaveChatGptKey(apiKey);
+                }
+
                 return IsAuthenticated;
             }
             catch
@@ -48,6 +58,41 @@ namespace YotoCreator.Services
                 IsAuthenticated = false;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Attempts to authenticate using a previously saved API key from Windows Credential Manager
+        /// </summary>
+        /// <returns>True if authentication was successful, false otherwise</returns>
+        public async Task<bool> AuthenticateFromStoredCredentialAsync()
+        {
+            var storedKey = _credentialService.GetChatGptKey();
+            if (string.IsNullOrEmpty(storedKey))
+            {
+                return false;
+            }
+
+            // Use saveCredential: false since the key is already saved
+            return await AuthenticateAsync(storedKey, saveCredential: false);
+        }
+
+        /// <summary>
+        /// Checks if a saved API key exists in Windows Credential Manager
+        /// </summary>
+        public bool HasStoredCredential()
+        {
+            return _credentialService.HasChatGptKey();
+        }
+
+        /// <summary>
+        /// Logs out and removes the saved API key from Windows Credential Manager
+        /// </summary>
+        public void Logout()
+        {
+            IsAuthenticated = false;
+            _apiKey = null;
+            _httpClient.DefaultRequestHeaders.Clear();
+            _credentialService.RemoveChatGptKey();
         }
 
         /// <summary>

@@ -41,7 +41,9 @@
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <PasswordBox x:Name="ChatGptApiKeyBox" PlaceholderText="Enter ChatGPT API Key" Width="300"/>
                                     <Button x:Name="ChatGptAuthButton" Content="Connect" Click="ChatGptAuthButton_Click"/>
-                                    <TextBlock x:Name="ChatGptStatusText" VerticalAlignment="Center" Foreground="Gray"/>
+                                    <Button x:Name="ChatGptLogoutButton" Content="Logout" Click="ChatGptLogoutButton_Click"
+                                            Visibility="Collapsed" Foreground="Red"/>
+                                    <TextBlock x:Name="ChatGptStatusText" VerticalAlignment="Center" Foreground="Gray" Text="Not connected"/>
                                 </StackPanel>
                             </StackPanel>
 
@@ -51,7 +53,9 @@
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <TextBox x:Name="YotoApiKeyBox" PlaceholderText="Enter Yoto API Key" Width="300"/>
                                     <Button x:Name="YotoAuthButton" Content="Connect" Click="YotoAuthButton_Click"/>
-                                    <TextBlock x:Name="YotoStatusText" VerticalAlignment="Center" Foreground="Gray"/>
+                                    <Button x:Name="YotoLogoutButton" Content="Logout" Click="YotoLogoutButton_Click"
+                                            Visibility="Collapsed" Foreground="Red"/>
+                                    <TextBlock x:Name="YotoStatusText" VerticalAlignment="Center" Foreground="Gray" Text="Not connected"/>
                                 </StackPanel>
                             </StackPanel>
 

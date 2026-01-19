@@ -34,6 +34,64 @@ namespace YotoCreator
             _chapters = new ObservableCollection<Chapter>();
 
             ChaptersList.ItemsSource = _chapters;
+
+            // Auto-load saved credentials when the page loads
+            this.Loaded += MainPage_Loaded;
+        }
+
+        private async void MainPage_Loaded(object sender, RoutedEventArgs e)
+        {
+            await TryAutoAuthenticateAsync();
+        }
+
+        /// <summary>
+        /// Attempts to automatically authenticate using stored credentials
+        /// </summary>
+        private async System.Threading.Tasks.Task TryAutoAuthenticateAsync()
+        {
+            // Try to authenticate ChatGPT from stored credentials
+            if (_chatGptService.HasStoredCredential())
+            {
+                ChatGptStatusText.Text = "Authenticating...";
+                ChatGptStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Orange);
+
+                var success = await _chatGptService.AuthenticateFromStoredCredentialAsync();
+                if (success)
+                {
+                    ChatGptStatusText.Text = "Connected (Auto-login)";
+                    ChatGptStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Green);
+                    ChatGptLogoutButton.Visibility = Visibility.Visible;
+                    ChatGptApiKeyBox.IsEnabled = false;
+                    ChatGptAuthButton.IsEnabled = false;
+                }
+                else
+                {
+                    ChatGptStatusText.Text = "Stored credentials expired";
+                    ChatGptStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Red);
+                }
+            }
+
+            // Try to authenticate Yoto from stored credentials
+            if (_yotoApiService.HasStoredCredential())
+            {
+                YotoStatusText.Text = "Authenticating...";
+                YotoStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Orange);
+
+                var success = await _yotoApiService.AuthenticateFromStoredCredentialAsync();
+                if (success)
+                {
+                    YotoStatusText.Text = "Connected (Auto-login)";
+                    YotoStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Green);
+                    YotoLogoutButton.Visibility = Visibility.Visible;
+                    YotoApiKeyBox.IsEnabled = false;
+                    YotoAuthButton.IsEnabled = false;
+                }
+                else
+                {
+                    YotoStatusText.Text = "Stored credentials expired";
+                    YotoStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Red);
+                }
+            }
         }
 
         #region Authentication
@@ -50,11 +108,15 @@ namespace YotoCreator
 
             try
             {
-                var success = await _chatGptService.AuthenticateAsync(apiKey);
+                var success = await _chatGptService.AuthenticateAsync(apiKey, saveCredential: true);
                 if (success)
                 {
-                    ChatGptStatusText.Text = "Connected";
+                    ChatGptStatusText.Text = "Connected (Saved)";
                     ChatGptStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Green);
+                    ChatGptLogoutButton.Visibility = Visibility.Visible;
+                    ChatGptApiKeyBox.IsEnabled = false;
+                    ChatGptAuthButton.IsEnabled = false;
+                    ChatGptApiKeyBox.Password = string.Empty; // Clear the password box for security
                 }
                 else
                 {
@@ -69,6 +131,17 @@ namespace YotoCreator
             }
         }
 
+        private void ChatGptLogoutButton_Click(object sender, RoutedEventArgs e)
+        {
+            _chatGptService.Logout();
+            ChatGptStatusText.Text = "Not connected";
+            ChatGptStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Gray);
+            ChatGptLogoutButton.Visibility = Visibility.Collapsed;
+            ChatGptApiKeyBox.IsEnabled = true;
+            ChatGptAuthButton.IsEnabled = true;
+            ChatGptApiKeyBox.Password = string.Empty;
+        }
+
         private async void YotoAuthButton_Click(object sender, RoutedEventArgs e)
         {
             var apiKey = YotoApiKeyBox.Text;
@@ -81,11 +154,15 @@ namespace YotoCreator
 
             try
             {
-                var success = await _yotoApiService.AuthenticateAsync(apiKey);
+                var success = await _yotoApiService.AuthenticateAsync(apiKey, saveCredential: true);
                 if (success)
                 {
-                    YotoStatusText.Text = "Connected";
+                    YotoStatusText.Text = "Connected (Saved)";
                     YotoStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Green);
+                    YotoLogoutButton.Visibility = Visibility.Visible;
+                    YotoApiKeyBox.IsEnabled = false;
+                    YotoAuthButton.IsEnabled = false;
+                    YotoApiKeyBox.Text = string.Empty; // Clear the text box for security
                 }
                 else
                 {
@@ -98,6 +175,17 @@ namespace YotoCreator
                 YotoStatusText.Text = $"Error: {ex.Message}";
                 YotoStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Red);
             }
+        }
+
+        private void YotoLogoutButton_Click(object sender, RoutedEventArgs e)
+        {
+            _yotoApiService.Logout();
+            YotoStatusText.Text = "Not connected";
+            YotoStatusText.Foreground = new Windows.UI.Xaml.Media.SolidColorBrush(Windows.UI.Colors.Gray);
+            YotoLogoutButton.Visibility = Visibility.Collapsed;
+            YotoApiKeyBox.IsEnabled = true;
+            YotoAuthButton.IsEnabled = true;
+            YotoApiKeyBox.Text = string.Empty;
         }
 
         #endregion
